@@ -295,3 +295,76 @@ export const LIVE_SETTINGS = {
   gameMode: "classic",
   questionCount: 20,
 };
+
+/* ------------------------------------------------- one per question type */
+
+// The six question types Kahoot has, and the shape each one has to be
+// answered in. The answer shapes come from Kahoot's own client.
+
+export const TYPE_QUIZ = {
+  type: "quiz",
+  gameBlockType: "quiz",
+  questionIndex: 0,
+  title: "Which planet is closest to the Sun?",
+  numberOfChoices: 4,
+  numberOfAnswersAllowed: 1,
+  choices: [{ answer: "Mercury" }, { answer: "Venus" }, { answer: "Earth" }, { answer: "Mars" }],
+  timeAvailable: 30000,
+};
+
+export const TYPE_TRUE_FALSE = {
+  type: "quiz",
+  gameBlockType: "quiz",
+  questionIndex: 1,
+  title: "The Earth is round.",
+  numberOfChoices: 2,
+  numberOfAnswersAllowed: 1,
+  choices: [{ answer: "True" }, { answer: "False" }],
+};
+
+export const TYPE_MULTI_SELECT = {
+  type: "multiple_select_quiz",
+  gameBlockType: "multiple_select_quiz",
+  questionIndex: 2,
+  title: "Which of these are planets?",
+  numberOfChoices: 4,
+  numberOfAnswersAllowed: 2,
+  choices: [{ answer: "Mercury" }, { answer: "Venus" }, { answer: "The Sun" }, { answer: "The Moon" }],
+};
+
+export const TYPE_JUMBLE = {
+  type: "jumble",
+  gameBlockType: "jumble",
+  questionIndex: 3,
+  title: "Put these space events in order:",
+  numberOfChoices: 4,
+  numberOfAnswersAllowed: 1,
+  choices: [
+    { answer: "Soft landing on the far side of the moon" },
+    { answer: "All female space walk" },
+    { answer: "Food grown in space eaten" },
+    { answer: "NASA announces the space station will open to tourists" },
+  ],
+};
+
+export const TYPE_OPEN_ENDED = {
+  type: "open_ended",
+  gameBlockType: "open_ended",
+  questionIndex: 4,
+  title: "What was Pantone's color of 2019?",
+  numberOfChoices: 0,
+  numberOfAnswersAllowed: 1,
+};
+
+export const TYPE_SLIDER = {
+  type: "slider",
+  gameBlockType: "slider",
+  questionIndex: 5,
+  title: "How far is the Moon from Earth, in thousands of km?",
+  numberOfChoices: 0,
+  numberOfAnswersAllowed: 1,
+  minRange: 0,
+  maxRange: 500,
+  step: 10,
+  unit: "thousand km",
+};

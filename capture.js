@@ -5,6 +5,7 @@
 //   --log         print every SEND/RECV frame
 //   --ready       also probe whether answering on QuestionReady is accepted
 //   --react       probe whether a reaction frame is accepted
+//   --ghosts      fetch the answer key from the ghost answers endpoint
 //   --ua <ua>     override the user agent sent in the login packet.
 //                 --ua chrome uses a desktop Chrome string.
 //   --print-frames  list every frame the library throws away
@@ -37,7 +38,15 @@
 
 import Kahoot from "kahoot.js-latest";
 
+import { answersByQuestion, fetchGhostAnswers } from "./lib/ghost-answers.js";
 import { REACTION_TYPES, sendReaction } from "./lib/reaction.js";
+
+// The `got` library inside kahoot.js-latest can throw this while a token
+// request is being retried, and it is not something the library catches.
+// Without a handler here it takes the whole script down.
+process.on("uncaughtException", (err) => {
+  console.error("uncaught:", err?.message ?? err);
+});
 
 const CHROME_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -61,7 +70,9 @@ const pin = Number(positional[0]);
 const name = positional[1] || "capture";
 
 if (!pin) {
-  console.error("usage: node capture.js <pin> [name] [--log] [--ready] [--ua chrome] [--print-frames]");
+  console.error(
+    "usage: node capture.js <pin> [name] [--log] [--ready] [--react] [--ghosts] [--ua chrome] [--print-frames]",
+  );
   process.exit(1);
 }
 
@@ -97,6 +108,7 @@ const probes = {
   resend: null,
   readyAnswer: null,
   reaction: null,
+  ghosts: null,
   correctChoices: null,
   extensiveModes: new Set(),
   sawTitle: false,
@@ -174,7 +186,46 @@ client.on("QuizStart", (quiz) => {
   if (probes.firstGameBlockData) {
     console.log("PROBE firstGameBlockData:", JSON.stringify(probes.firstGameBlockData));
   }
+  console.log(`PROBE extensiveMode: ${String(quiz?.extensiveMode)}`);
+  console.log(`PROBE gameId: ${String(quiz?.gameId)}`);
+  console.log(`PROBE reactions: ${String(quiz?.reactions)}`);
+
+  if (flags.has("--ghosts")) {
+    probeGhostAnswers(quiz?.gameId);
+  }
 });
+
+/**
+ * The answer key, from the endpoint Kahoot's own web client uses for ghost
+ * answers. It needs no token and no session.
+ */
+async function probeGhostAnswers(gameApiId) {
+  if (!gameApiId) {
+    console.log("PROBE ghosts: no gameId in the QuizStart payload");
+    return;
+  }
+
+  for (let attempt = 1; attempt <= 20; attempt += 1) {
+    try {
+      const events = await fetchGhostAnswers(gameApiId);
+      const byQuestion = answersByQuestion(events);
+      probes.ghosts = byQuestion.size;
+      console.log(
+        `PROBE ghosts: ${events.length} events, ${byQuestion.size} questions answered`,
+      );
+      if (byQuestion.size > 0) {
+        console.log("PROBE ghost answers:", JSON.stringify([...byQuestion.entries()]));
+        console.log("PROBE raw events:", JSON.stringify(events).slice(0, 2000));
+        return;
+      }
+    } catch (err) {
+      console.log(`PROBE ghosts: ${err.message}`);
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+  }
+  console.log("PROBE ghosts: nothing came back");
+}
 
 client.on("QuestionReady", (question) => {
   dump("QuestionReady", question);
@@ -252,7 +303,9 @@ function analyseFrames() {
     const hasTitle = Boolean(parsed && (typeof parsed.title === "string" || typeof parsed.question === "string"));
     const hasChoices = Boolean(parsed && Array.isArray(parsed.choices) && parsed.choices.length > 0);
 
-    if (!KNOWN_IDS.has(id)) {
+    // Only the player channel carries the game data. The bayeux acks and
+    // the controller channel would drown the signal.
+    if (frame?.channel === "/service/player" && !KNOWN_IDS.has(id)) {
       discarded.push({ id, channel: frame?.channel, hasTitle, hasChoices, parsed });
     }
     if (hasTitle || hasChoices) {
@@ -278,6 +331,7 @@ function printSummary() {
   console.log(`nextGameBlockData  : ${describeBlock(probes.nextGameBlockData)}`);
   console.log(`resend accepted    : ${probes.resend ?? "not tested"}`);
   console.log(`reaction accepted  : ${probes.reaction ?? "not tested (add --react)"}`);
+  console.log(`ghost answers      : ${probes.ghosts ?? "not tested (add --ghosts)"}`);
   console.log(`ready answer       : ${probes.readyAnswer ?? "not tested (add --ready)"}`);
   console.log(`correctChoices     : ${JSON.stringify(probes.correctChoices)}`);
 

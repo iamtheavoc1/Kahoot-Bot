@@ -13,8 +13,19 @@ import { tests as botTests } from "./bot-logic.js";
 import { tests as resolverTests } from "./resolver-http.js";
 import { tests as liveTests } from "./live.js";
 import { tests as reactionTests } from "./reaction.js";
+import { tests as typeTests } from "./question-types.js";
+import { tests as ghostTests } from "./ghost-answers.js";
 
-const all = [...tests, ...commandTests, ...botTests, ...resolverTests, ...liveTests, ...reactionTests];
+const all = [
+  ...tests,
+  ...commandTests,
+  ...botTests,
+  ...resolverTests,
+  ...liveTests,
+  ...reactionTests,
+  ...typeTests,
+  ...ghostTests,
+];
 
 let passed = 0;
 const failures = [];
