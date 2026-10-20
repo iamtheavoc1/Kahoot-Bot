@@ -16,6 +16,7 @@ import assert from "node:assert/strict";
 
 import { BotManager } from "../lib/bots.js";
 import { loadConfig } from "../lib/config.js";
+import { KnownAnswers } from "../lib/known-answers.js";
 
 const DEFAULT_PIN = "00112233";
 const TIMEOUT_MS = 120000;
@@ -26,6 +27,12 @@ export async function runIntegration() {
   config.pin = String(pin);
   config.mode = "perfect";
 
+  // A recording of its own, so the test does not read a previous run's
+  // answers and pass without answering anything.
+  const known = new KnownAnswers({
+    file: `${process.env.TMPDIR || "/tmp"}/kahoot-integration-${process.pid}.json`,
+  });
+
   const results = [];
   let finish;
   const answered = new Promise((resolve) => {
@@ -35,6 +42,7 @@ export async function runIntegration() {
   const manager = new BotManager({
     config,
     log: (level, text) => console.log(`    [${level}] ${text}`),
+    knownAnswers: known,
     onQuestionEnd: (bot, payload) => {
       results.push(payload);
       finish();
@@ -66,6 +74,11 @@ export async function runIntegration() {
   assert.equal(first.isCorrect, true, "the bot answered the challenge incorrectly");
   assert.ok(Array.isArray(first.correctChoices), "the server did not report correctChoices");
 
+  // The answer is recorded, so a repeat run of the same quiz needs nothing.
+  known.flush();
+  assert.ok(known.count(config.pin) > 0, "the answer was not recorded");
+
   console.log("  ok   the bot joins a challenge and answers it correctly");
+  console.log("  ok   the answer is recorded for next time");
   return true;
 }

@@ -7,6 +7,9 @@ extra packets to spam the lobby.
 The original was a single file that answered at random. This one answers properly
 and tells you why.
 
+It also speaks a couple of frames the original library never implemented, because
+Kahoot's server accepts them and the library simply never had a class for them.
+
 ---
 
 ## Install
@@ -46,6 +49,7 @@ The terminal interface is a live dashboard: bots on the left, a log on the right
 | `kick all` | remove every bot |
 | `mode <perfect\|chaos\|apocalypse\|off>` | choose how bots answer |
 | `resend <count>` | extra answer packets per question |
+| `react <count>` | reactions per question per bot |
 | `model <name>` | change the resolver model without restarting |
 | `spam [on\|off\|burst]` | toggle the spam layer, or fire a burst right now |
 | `help` | list the commands |
@@ -60,6 +64,7 @@ The terminal interface is a live dashboard: bots on the left, a log on the right
 | `RESOLVER_MODEL` | `gpt-4o-mini` | model name passed to the resolver |
 | `RESEND` | `0` | extra answer packets per question |
 | `FEEDBACK_BURST` | `0` | feedback packets sent when the host asks for feedback |
+| `REACTIONS` | `0` | reactions sent per question per bot |
 | `PARALLEL` | `35` | joins in flight at once |
 
 ```bash
@@ -70,13 +75,16 @@ RESOLVER_BASE=http://localhost:11434 RESOLVER_MODEL=llama3.2 npm start
 
 ## How the correct answer is found
 
-1. Kahoot sends the question in the `questionStart` packet: the text is in
-   `title`, the options are in `choices`.
-2. The bot turns that into a plain question and options.
-3. One resolver call per question, shared by every bot in the lobby.
-4. The reply is matched back onto an option **by text**, not by position.
+This depends on the host's settings, and the bot works out which case it is in
+rather than guessing.
 
-The last step is the one that matters. Models answer in wildly different ways:
+**When the host has "Show questions & answers on players' devices" on**, the
+question arrives in full: the text in `title`, the options in `choices`. The
+bot turns that into a plain question, asks the resolver once for the whole
+lobby, and matches the reply back onto an option **by text**, not by position.
+
+Matching on text is the part that matters. Models answer in wildly different
+ways:
 
 ```
 Mercury
@@ -85,19 +93,34 @@ B) Mercury
 The correct answer is Mercury.
 ```
 
-Matching on text survives all four. Parsing an index does not.
+Text matching survives all four. Parsing an index does not.
 
-That also means it keeps working when Kahoot shuffles the options, which it
+It also means it keeps working when Kahoot shuffles the options, which it
 does per player.
 
-Full protocol details, with the captured payloads, are in
-[docs/PROTOCOL.md](docs/PROTOCOL.md).
+**When the host has that setting off**, no question text is sent at all. The
+player's device renders four coloured buttons and nothing else, so there is
+nothing to resolve. The bot says so in the log rather than quietly guessing,
+and falls back to:
+
+- **the first question**, which arrives complete with the correct flags on it
+  whatever the settings are;
+- **answers recorded from an earlier run** of the same quiz.
 
 ### One call per question, not per bot
 
 150 bots times 20 questions would be 3,000 resolver calls for one game. The
 answers are cached by question index, so a game costs 20 calls. Bots that
 arrive while a call is in flight wait for it instead of starting another.
+
+### Answers recorded from an earlier run
+
+`QuestionEnd` says which option was right. That is written down, keyed by PIN
+and fingerprinted so a different quiz at the same PIN does not inherit it.
+Run a quiz once and the next run answers every question from the recording,
+with no text and no resolver.
+
+This is the floor that works whatever the host's settings are.
 
 ### Modes
 
@@ -115,6 +138,9 @@ API rather than a live lobby, and they send the `correct` flag with each
 option. When that flag is there the bot uses it directly and skips the resolver
 entirely, so challenges work with no API key at all.
 
+Full protocol details, with the captured payloads and the frames Kahoot's own
+web client sends, are in [docs/PROTOCOL.md](docs/PROTOCOL.md).
+
 ---
 
 ## The spam layer
@@ -126,6 +152,10 @@ overwriting a correct one.
 
 - **Extra answer packets.** `resend <count>` repeats the answer a few
   milliseconds apart.
+- **Reactions.** `react <count>` sends emoji reactions. The library has no
+  class for them, but the server does not care: a reaction is a frame the
+  browser sends and the bot can send too. See
+  [docs/PROTOCOL.md](docs/PROTOCOL.md#reactions).
 - **Feedback bursts.** When the host asks for feedback, `FEEDBACK_BURST`
   packets are sent back.
 - **Two-factor.** Kahoot's two-factor shows four shapes on the host's screen.
@@ -152,8 +182,9 @@ than at the end. The filter matches on substrings, so appending does not help:
 exact and substring matching.
 
 **If the host hides the questions** ("Show questions & answers on players'
-devices" off), there is no text to resolve. The bot falls back to guessing.
-That looks like a bug and is not one.
+devices" off), there is no text to resolve. The bot falls back to the first
+question and to answers recorded from an earlier run, and says so in the log.
+Without either of those it is guessing, and it tells you that too.
 
 **A rejected name makes `join()` hang.** Kahoot ignores a login request it
 dislikes, and the library never settles the promise it is waiting on. The bot

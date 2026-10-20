@@ -49,7 +49,7 @@ test("extract: reads the question text from title", () => {
   assert.equal(question.numberOfChoices, 4);
   assert.equal(question.numberOfAnswersAllowed, 1);
   assert.equal(question.multiSelect, false);
-  assert.equal(question.restricted, false);
+  assert.equal(question.questionsHidden, false);
 });
 
 test("extract: strips the HTML Kahoot puts in titles", () => {

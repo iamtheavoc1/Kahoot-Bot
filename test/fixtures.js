@@ -199,3 +199,99 @@ export const CHALLENGE_QUIZ = {
   index: 0,
   timeAvailable: 20000,
 };
+
+/* ------------------------------------------------------------------ live */
+
+// A live game where the host has "Show questions & answers on players'
+// devices" switched OFF. Captured by the owner.
+//
+// There is no title and no choices. The question is simply not sent.
+//
+//   PROBE text field: null
+//   PROBE choices field: []
+export const LIVE_NO_TEXT = {
+  gameBlockIndex: 1,
+  totalGameBlockCount: 20,
+  layout: "CLASSIC",
+  extensiveMode: false,
+  type: "quiz",
+  timeRemaining: 19994,
+  timeAvailable: 20000,
+  numberOfAnswersAllowed: 1,
+  currentQuestionAnswerCount: 0,
+  numberOfChoices: 4,
+};
+
+// A live QuizStart. `firstGameBlockData` is the first question of the quiz,
+// and it is complete: the text, the options, and the correct flags.
+export const LIVE_QUIZ_START = {
+  quizType: "classic",
+  gameBlockCount: 20,
+  quizQuestionAnswers: [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+  firstGameBlockData: {
+    type: "quiz",
+    questionIndex: 0,
+    title: "Which planet is closest to the Sun?",
+    numberOfChoices: 4,
+    numberOfAnswersAllowed: 1,
+    choices: [
+      { answer: "Mercury", correct: true },
+      { answer: "Venus", correct: false },
+      { answer: "Earth", correct: false },
+      { answer: "Mars", correct: false },
+    ],
+  },
+};
+
+// A live QuestionReady with the setting off. `nextGameBlockData` is there
+// but stubbed: empty choices, no text, just the image metadata.
+export const LIVE_READY_STUBBED = {
+  questionIndex: 1,
+  gameBlockType: "quiz",
+  gameBlockLayout: "CLASSIC",
+  quizQuestionAnswers: [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+  timeLeft: 5,
+  nextGameBlockData: {
+    type: "quiz",
+    media: [],
+    layout: "TOP_IMAGE",
+    imageMetadata: {
+      id: "ae716b40-76ad-40e4-8259-15cccebdb4b9",
+      altText: "https://images-cdn.kahoot.it/ae716b40-76ad-40e4-8259-15cccebdb4b9?auto=webp",
+      contentType: "image/jpeg",
+      width: 640,
+      height: 427,
+    },
+    choices: [{}, {}, {}, {}],
+  },
+};
+
+// A live QuestionReady with the setting on: the next question comes whole.
+export const LIVE_READY_COMPLETE = {
+  questionIndex: 1,
+  gameBlockType: "quiz",
+  gameBlockLayout: "CLASSIC",
+  quizQuestionAnswers: [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+  timeLeft: 5,
+  nextGameBlockData: {
+    type: "quiz",
+    questionIndex: 1,
+    title: "Which planet is second from the Sun?",
+    numberOfChoices: 4,
+    numberOfAnswersAllowed: 1,
+    choices: [{ answer: "Mercury" }, { answer: "Venus" }, { answer: "Earth" }, { answer: "Mars" }],
+  },
+};
+
+// The game settings a live join returns. `provideControllerExtensiveData`
+// says whether the server was willing to send the question text.
+export const LIVE_SETTINGS = {
+  gameOptions: {
+    provideControllerExtensiveData: false,
+    reactions: true,
+    questionTimer: true,
+    shuffleQuestions: false,
+  },
+  gameMode: "classic",
+  questionCount: 20,
+};

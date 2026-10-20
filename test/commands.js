@@ -202,6 +202,14 @@ test("command: model changes the resolver model", async () => {
   assert.deepEqual(ctx.calls.models, ["llama3.2"]);
 });
 
+test("command: react sets how many reactions each bot sends", async () => {
+  const ctx = setup();
+  await ctx.commands.handle("react 3");
+  assert.equal(ctx.config.reactions, 3);
+  await ctx.commands.handle("react -1");
+  assert.equal(ctx.config.reactions, 3, "a bad count is refused");
+});
+
 /* ------------------------------------------------------------------ spam */
 
 test("command: spam toggles, and takes on, off or burst", async () => {

@@ -11,8 +11,10 @@ import { tests } from "./unit.js";
 import { tests as commandTests } from "./commands.js";
 import { tests as botTests } from "./bot-logic.js";
 import { tests as resolverTests } from "./resolver-http.js";
+import { tests as liveTests } from "./live.js";
+import { tests as reactionTests } from "./reaction.js";
 
-const all = [...tests, ...commandTests, ...botTests, ...resolverTests];
+const all = [...tests, ...commandTests, ...botTests, ...resolverTests, ...liveTests, ...reactionTests];
 
 let passed = 0;
 const failures = [];
