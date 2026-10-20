@@ -5,7 +5,10 @@
   "description": "Instantly flood Kahoots with customisable bots",
   "type": "module",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node test/run.js",
+    "test:integration": "node test/run.js --integration",
+    "test:scale": "node test/run.js --scale"
   },
   "dependencies": {
     "blessed": "^0.1.81",
