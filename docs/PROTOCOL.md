@@ -233,8 +233,21 @@ updateAntiSpamState = (state, timestamp, {punishSpamCount = 5, punishSpamTimeWin
 }
 ```
 
-One bot should stay under that. A hundred bots each sending one is not
-spamming, from the server's point of view.
+**That throttle is the web client's own, not a server rule.** Fifty reactions
+sent as fast as possible were all acknowledged by the server, none dropped:
+
+```
+PROBE reaction burst: 50 sent in 2919ms, 50 acknowledged, 0 rejected
+```
+
+A hundred bots each sending one is nowhere near the limit.
+
+### Emotes
+
+`submitEmote` is code **48** with an `emoteType` field instead of
+`reactionType`, and it is a separate primitive rather than a reaction with a
+different value. The types are `Heart`, `Trophy` and `Victory`. Verified
+accepted live.
 
 ### The whole game server code table
 
@@ -266,6 +279,144 @@ From the same source. The library's own codes cross-check against it:
 
 Anything the browser can send, the bot can send. The library's silence is a
 statement about somebody's 2023 code, not about what Kahoot accepts.
+
+---
+
+## The answer shapes
+
+Each question type is answered differently, and Kahoot's own client is where
+the shapes come from. It builds the answer payload per type:
+
+```js
+// the client bundle, gameApiAnswerBasePayload
+case GameBlockType.Quiz:
+  return {type: `${GameBlockType.Quiz}_async`, choiceIndex: o, isCorrect: a === "correct"};
+case GameBlockType.Slider:
+  return {type: `${GameBlockType.Slider}_async`, choiceValue: o, isCorrect: a === "correct"};
+case GameBlockType.OpenEnded:
+  return {type: `${GameBlockType.OpenEnded}_async`, text: o, isCorrect: a === "correct"};
+case GameBlockType.MultipleSelectQuiz:
+  return {type: `${GameBlockType.MultipleSelectQuiz}_async`, selectedChoices: o, isCorrect: a === "correct"};
+case GameBlockType.Jumble:
+  return {type: `${GameBlockType.Jumble}_async`, selectedJumbleOrder: o, isCorrect: a === "correct"};
+case GameBlockType.PinIt:
+  return {type: `${GameBlockType.PinIt}_async`, pin: o, isCorrect: a === "correct"};
+```
+
+So:
+
+| Type | Answer | What the bot sends |
+|---|---|---|
+| `quiz`, `true_false` | one option index | `choice: 2` |
+| `multiple_select_quiz` | several option indexes | `choice: [0, 3]` |
+| `jumble` | a permutation of the options | `choice: [3, 1, 2, 0]` |
+| `open_ended`, `word_cloud` | the answer as text | `text: "Coral Pink"` |
+| `slider` | a number on the slider's step | `choice: 380` |
+| `pin_it` | a point on the image | not implemented |
+
+`LiveQuestionAnswer` already understands all of these shapes. The bot just
+has to produce the right one, which means the resolver has to be asked a
+different question for each type.
+
+### The slider range
+
+Kahoot's client reads the slider range off the question payload:
+
+```js
+slider: t.type === GameBlockType.Slider
+  ? {unit: t.unit, start: t.minRange, end: t.maxRange, step: t.step}
+  : undefined
+```
+
+So the fields are `minRange`, `maxRange`, `step` and `unit`.
+
+### The jumble order
+
+The client shows the options in the order the player sees them and the
+answer is a permutation of those positions. It works out which permutations
+are valid by grouping the options that share a value, then checks the
+answer against them:
+
+```js
+getValidJumbleAnswers = (choices) => { ... generatePermutations ... }
+verifyJumbleAnswer = (answer, choices, order) => {
+  const valid = getValidJumbleAnswers(choices).map(...);
+  const distances = valid.map(v => v.filter((x, i) => answer?.[i] !== x).length);
+  return {isCorrect: distances[minIndex(distances)] === 0, mostCorrectAnswer: valid[minIndex(distances)]};
+}
+```
+
+So the answer is the order the options should be in, expressed as positions
+in the shuffled list.
+
+---
+
+## The ghost answers endpoint
+
+Kahoot's web client calls this to show what the ghost players answered:
+
+```
+GET https://apis.kahoot.it/gameplay-services/events/v1/game/{gameApiId}/answers
+```
+
+**No token, no session, no cookie.** Verified reachable: `200` with an empty
+list for a game that has not run a question yet.
+
+The response is a list of answer events:
+
+```json
+[{ "event": {
+  "type": "ANSWER",
+  "nickname": "...",
+  "originalBlockIndex": 0,
+  "inGameBlockIndex": 0,
+  "answerData": { "type": "quiz_async", "choiceIndex": 2, "isCorrect": true }
+}}]
+```
+
+The `answerData` is shaped exactly as the table above, so once a game has run
+a question this is the answer key for it, whatever the host's setting is and
+without a resolver.
+
+The `gameApiId` comes from the `QuizStart` payload, as `gameId`.
+
+The endpoints under `report/v1` are the host's, and answer `401` to a
+player:
+
+```
+GET /gameplay-services/report/v1/data/{gameId}/blocks      401
+GET /gameplay-services/report/v1/data/{gameId}/answers     401
+GET /gameplay-services/leaderboard/v1/game/{gameId}        401
+```
+
+---
+
+From the library source. Anything else arrives on the socket and is
+discarded:
+
+```
+1 questionReady    2 questionStart    3 quizEnd       4 timeOver
+5 gameReset        8 questionEnd      9 quizStart    10 twoFactorCorrect
+12 feedback       13 podium         14 nameAccept   17 recovery
+19 teamAccept     20 teamTalk       51 twoFactorReset  52 twoFactorWrong
+53 twoFactorReset
+```
+
+Seen on the wire but not handled: **200**, which is
+`{"controllerEstimateCount": 10}` and only says how many players the lobby
+expects.
+
+The acknowledgement for any frame is routed by the bayeux message id, so a
+frame the library has no class for still gets a reply:
+
+```js
+this.handlers.timetrack = (message) => {
+  if (this.waiting[message.id]) {
+    this.waiting[message.id](message);
+    delete this.waiting[message.id];
+  }
+};
+```
 
 ---
 
@@ -386,18 +537,27 @@ user agent. `--ua chrome` does that.
 
 ## Still unverified
 
+- Whether the ghost answers endpoint holds the answer key for a game that has
+  only just started. It is reachable and it is empty before the first
+  question; what comes back afterwards needs a game that is actually
+  running.
 - Whether `nextGameBlockData` carries the full question, with the correct
   flags, when the setting is on. If it does, live games need no resolver at
   all, the same as challenges.
 - Whether a real user agent changes `extensiveMode` to `true` and makes the
   text appear with the setting off.
 - Whether answering on `QuestionReady` is accepted.
-- What `provideControllerExtensiveData` looks like in the game settings.
+- What `provideControllerExtensiveData` looks like in the game settings. It
+  is absent from the `Joined` payload, so it may only ever appear in
+  `QuizStart`.
+- Whether a reaction actually renders on the host's screen. The server
+  acknowledges the frame, which is not the same thing, and that needs
+  somebody watching the host's display.
 
 `capture.js` probes all of these:
 
 ```bash
-node capture.js <pin> [name] [--log] [--ready] [--react] [--ua chrome] [--print-frames]
+node capture.js <pin> [name] [--log] [--ready] [--react] [--react-burst <n>] [--ghosts] [--ua chrome] [--print-frames]
 ```
 
 It prints the raw payload, the field names, every frame the library throws

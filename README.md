@@ -107,6 +107,28 @@ and falls back to:
   whatever the settings are;
 - **answers recorded from an earlier run** of the same quiz.
 
+### The six question types
+
+Kahoot has six kinds of question and each one has to be answered
+differently, the same way Kahoot's own client answers them:
+
+| Type | The answer is | What goes on the wire |
+|---|---|---|
+| `quiz`, `true_false` | one option | `choice: 2` |
+| `multiple_select_quiz` | several options | `choice: [0, 3]` |
+| `jumble` | an order | `choice: [3, 1, 2, 0]` |
+| `open_ended` | the answer as text | `text: "Coral Pink"` |
+| `slider` | a number on the slider's step | `choice: 380` |
+| `pin_it` | a point on the image | not implemented |
+
+The resolver is asked a different question for each of them: "reply with the
+exact text of the correct option" for a quiz, "reply with the correct order,
+as the option numbers" for a jumble, "reply with only the number between 0
+and 500, in steps of 10" for a slider, and so on.
+
+`pin_it` is the one that is missing. It needs a vision model to look at an
+image and pick a point on it, which is a different problem from the rest.
+
 ### One call per question, not per bot
 
 150 bots times 20 questions would be 3,000 resolver calls for one game. The
@@ -121,6 +143,23 @@ Run a quiz once and the next run answers every question from the recording,
 with no text and no resolver.
 
 This is the floor that works whatever the host's settings are.
+
+### The answer key, from Kahoot's own API
+
+Kahoot's web client fetches the ghost players' answers from an endpoint that
+needs no token and no session:
+
+```
+GET https://apis.kahoot.it/gameplay-services/events/v1/game/{gameApiId}/answers
+```
+
+Once a game has run a question it holds the answer key, in the same shapes
+the client uses. `capture.js --ghosts` reads it. The game id comes from the
+`QuizStart` payload, as `gameId`.
+
+This is the most promising route to answering correctly on a first run with
+the host's setting off, and it is the one thing still waiting on a game that
+is actually running.
 
 ### Modes
 
@@ -154,7 +193,9 @@ overwriting a correct one.
   milliseconds apart.
 - **Reactions.** `react <count>` sends emoji reactions. The library has no
   class for them, but the server does not care: a reaction is a frame the
-  browser sends and the bot can send too. See
+  browser sends and the bot can send too. Fifty of them sent as fast as
+  possible are all accepted, so the rate limit is the web client's own
+  rather than the server's. See
   [docs/PROTOCOL.md](docs/PROTOCOL.md#reactions).
 - **Feedback bursts.** When the host asks for feedback, `FEEDBACK_BURST`
   packets are sent back.

@@ -5,6 +5,7 @@
 //   --log         print every SEND/RECV frame
 //   --ready       also probe whether answering on QuestionReady is accepted
 //   --react       probe whether a reaction frame is accepted
+//   --react-burst <n>  fire n reactions as fast as possible and count them
 //   --ghosts      fetch the answer key from the ghost answers endpoint
 //   --ua <ua>     override the user agent sent in the login packet.
 //                 --ua chrome uses a desktop Chrome string.
@@ -39,7 +40,7 @@
 import Kahoot from "kahoot.js-latest";
 
 import { answersByQuestion, fetchGhostAnswers } from "./lib/ghost-answers.js";
-import { REACTION_TYPES, sendReaction } from "./lib/reaction.js";
+import { EMOTE_TYPES, REACTION_TYPES, sendEmote, sendReaction } from "./lib/reaction.js";
 
 // The `got` library inside kahoot.js-latest can throw this while a token
 // request is being retried, and it is not something the library catches.
@@ -66,12 +67,21 @@ if (uaIndex !== -1) {
   }
 }
 
+const burstIndex = args.indexOf("--react-burst");
+let reactBurst = 0;
+if (burstIndex !== -1) {
+  const value = args[burstIndex + 1];
+  if (value && !value.startsWith("--")) {
+    reactBurst = Number.parseInt(value, 10) || 0;
+  }
+}
+
 const pin = Number(positional[0]);
 const name = positional[1] || "capture";
 
 if (!pin) {
   console.error(
-    "usage: node capture.js <pin> [name] [--log] [--ready] [--react] [--ghosts] [--ua chrome] [--print-frames]",
+    "usage: node capture.js <pin> [name] [--log] [--ready] [--react] [--react-burst <n>] [--ghosts] [--ua chrome] [--print-frames]",
   );
   process.exit(1);
 }
@@ -108,6 +118,8 @@ const probes = {
   resend: null,
   readyAnswer: null,
   reaction: null,
+  emote: null,
+  burst: null,
   ghosts: null,
   correctChoices: null,
   extensiveModes: new Set(),
@@ -149,6 +161,9 @@ client.on("Joined", (settings) => {
   if (flags.has("--react")) {
     probeReactions();
   }
+  if (reactBurst > 0) {
+    probeReactionBurst(reactBurst);
+  }
 });
 
 /**
@@ -167,6 +182,48 @@ async function probeReactions() {
       console.log(`PROBE reaction ${type}: REJECTED`, JSON.stringify(err));
     }
   }
+
+  // The emote is a separate frame, code 48, with a different field.
+  for (const type of EMOTE_TYPES.slice(0, 1)) {
+    try {
+      const result = await sendEmote(client, type);
+      probes.emote = "accepted";
+      console.log(`PROBE emote ${type}: ACCEPTED timetrack=${result?.ext?.timetrack}`);
+    } catch (err) {
+      probes.emote = "rejected";
+      console.log(`PROBE emote ${type}: REJECTED`, JSON.stringify(err));
+    }
+  }
+}
+
+/**
+ * Fire a lot of reactions as fast as possible and count how many the server
+ * acknowledges.
+ *
+ * A cometd timetrack only says the frame was well formed, so this does not
+ * prove anything showed up on the host's screen. It does show whether the
+ * server drops them.
+ */
+async function probeReactionBurst(count) {
+  let acknowledged = 0;
+  let rejected = 0;
+  const started = Date.now();
+
+  await Promise.all(
+    Array.from({ length: count }, async () => {
+      try {
+        await sendReaction(client, REACTION_TYPES[Math.floor(Math.random() * REACTION_TYPES.length)]);
+        acknowledged += 1;
+      } catch {
+        rejected += 1;
+      }
+    }),
+  );
+
+  probes.burst = { sent: count, acknowledged, rejected };
+  console.log(
+    `PROBE reaction burst: ${count} sent in ${Date.now() - started}ms, ${acknowledged} acknowledged, ${rejected} rejected`,
+  );
 }
 
 client.on("NameAccept", (info) => {
@@ -331,6 +388,14 @@ function printSummary() {
   console.log(`nextGameBlockData  : ${describeBlock(probes.nextGameBlockData)}`);
   console.log(`resend accepted    : ${probes.resend ?? "not tested"}`);
   console.log(`reaction accepted  : ${probes.reaction ?? "not tested (add --react)"}`);
+  console.log(`emote accepted     : ${probes.emote ?? "not tested (add --react)"}`);
+  console.log(
+    `reaction burst     : ${
+      probes.burst
+        ? `${probes.burst.sent} sent, ${probes.burst.acknowledged} acknowledged, ${probes.burst.rejected} rejected`
+        : "not tested (add --react-burst <n>)"
+    }`,
+  );
   console.log(`ghost answers      : ${probes.ghosts ?? "not tested (add --ghosts)"}`);
   console.log(`ready answer       : ${probes.readyAnswer ?? "not tested (add --ready)"}`);
   console.log(`correctChoices     : ${JSON.stringify(probes.correctChoices)}`);
