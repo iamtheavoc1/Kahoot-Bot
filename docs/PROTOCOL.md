@@ -197,9 +197,29 @@ question, and one that only a live game can answer. `capture.js` probes it.
 
 The bot wraps every join in a 25 second timeout for this reason.
 
-**A duplicate name rejects** with `description: "duplicate name"`, and the
-library deliberately does *not* leave the socket in that case, which is how a
-rejected name turns into a ghost.
+This was reproduced. A challenge pin rejects a nickname it has already seen,
+and the library handles that rejection like this:
+
+```js
+// src/util/ChallengeHandler.js
+this._httpRequest(`.../join/?nickname=${encodeURIComponent(this.name)}`, {method:"POST"}, true)
+  .then((data)=>{
+    if(data.error){ throw data; }
+    ...
+    joined(this.cid);
+  })
+  .catch(()=>{
+    this.leave("Error connecting to Challenge");
+  });
+```
+
+The error is swallowed, `leave` closes the socket, and the join promise that
+`join()` is still waiting on is never settled. The caller waits forever with
+no error to show for it.
+
+In a live game the same situation arrives as a rejected promise with
+`description: "duplicate name"`, and the library deliberately does *not* leave
+the socket in that case, which is how a rejected name turns into a ghost.
 
 **`NameAccept` is where the filter shows up.** The library sets
 `this.name = data.playerName` before emitting, so comparing that against the

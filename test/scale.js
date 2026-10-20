@@ -47,7 +47,11 @@ export async function runScale() {
     },
   });
 
-  const names = parseNameExpression(`ScaleBot~${botCount}`).names;
+  // A nickname the challenge has not seen before. The zero-width characters
+  // make the bots in the group distinct from each other; the prefix keeps
+  // them distinct from an earlier run.
+  const base = `sc-${Date.now().toString(36).slice(-6)}`;
+  const names = parseNameExpression(`${base}~${botCount}`).names;
   console.log(`  joining ${botCount} bots to challenge ${pin} (${parallel} at a time)...`);
 
   const started = Date.now();

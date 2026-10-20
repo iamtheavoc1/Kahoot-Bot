@@ -42,7 +42,10 @@ export async function runIntegration() {
   });
 
   console.log(`  joining challenge ${pin}...`);
-  await manager.addBots(["integration-bot"]);
+  // The challenge rejects a nickname it has already seen, and the library
+  // swallows that error, so every run needs a name of its own.
+  const nickname = `it-${Date.now().toString(36).slice(-8)}`;
+  await manager.addBots([nickname]);
 
   const timeout = new Promise((_, reject) => {
     setTimeout(() => reject(new Error("timed out waiting for the first question")), TIMEOUT_MS);

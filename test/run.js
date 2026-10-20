@@ -9,8 +9,10 @@
 
 import { tests } from "./unit.js";
 import { tests as commandTests } from "./commands.js";
+import { tests as botTests } from "./bot-logic.js";
+import { tests as resolverTests } from "./resolver-http.js";
 
-const all = [...tests, ...commandTests];
+const all = [...tests, ...commandTests, ...botTests, ...resolverTests];
 
 let passed = 0;
 const failures = [];

@@ -155,6 +155,10 @@ exact and substring matching.
 devices" off), there is no text to resolve. The bot falls back to guessing.
 That looks like a bug and is not one.
 
+**A rejected name makes `join()` hang.** Kahoot ignores a login request it
+dislikes, and the library never settles the promise it is waiting on. The bot
+gives every join a 25 second timeout so one bad name cannot stall a batch.
+
 **Challenge PINs start with a zero**, so the PIN is kept as a string. Turning
 `00112233` into the number `112233` turns a challenge into a game that does not
 exist.
