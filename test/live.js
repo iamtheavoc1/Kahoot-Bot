@@ -234,4 +234,23 @@ test("bot: a recorded answer beats the resolver", async () => {
   known.flush();
 });
 
+test("bot: the public answer key is used when it knows the question", async () => {
+  const ctx = setup();
+  ctx.manager.ghostAnswers.set(1, [3]);
+
+  const question = extractQuestion(LIVE_NO_TEXT, { settings: LIVE_SETTINGS });
+  question.index = 1;
+  const choice = await ctx.manager._chooseAnswer(question);
+  assert.equal(choice, 3);
+  assert.equal(ctx.resolverCalls(), 0, "no model was needed");
+});
+
+test("bot: the public answer key is ignored when it knows nothing", async () => {
+  const ctx = setup();
+  const question = extractQuestion(LIVE_NO_TEXT, { settings: LIVE_SETTINGS });
+  question.index = 7;
+  const choice = await ctx.manager._chooseAnswer(question);
+  assert.ok(typeof choice === "number" || Array.isArray(choice));
+});
+
 export { tests };
