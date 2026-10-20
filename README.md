@@ -222,6 +222,14 @@ than at the end. The filter matches on substrings, so appending does not help:
 `hello` still appears inside `hello world`. Splitting the word defeats both
 exact and substring matching.
 
+Measured against the server:
+
+```
+plain                  requested "nigger"       -> "MightyGoose58"    (renamed)
+mid-word zero-width    requested "ni<ZWSP>gger"  -> "ni<ZWSP>gger"    (kept)
+appended zero-width    requested "nigger<ZWSP>"  -> "HonestGlider14"  (renamed)
+```
+
 **If the host hides the questions** ("Show questions & answers on players'
 devices" off), there is no text to resolve. The bot falls back to the first
 question and to answers recorded from an earlier run, and says so in the log.
@@ -256,6 +264,18 @@ host, no live game and no API key.
 CHALLENGE_PIN=00112233 npm run test:scale
 SCALE_BOTS=150 SCALE_PARALLEL=35 npm run test:scale
 ```
+
+### Tools for a live game
+
+```bash
+node capture.js <pin> [name] [--log] [--ready] [--react] [--react-burst 50] [--ghosts] [--recover] [--ua chrome]
+node tools/name-probe.mjs <pin>        # what the server calls you
+node tools/browser-watch.mjs <pin>     # what a real browser receives
+```
+
+`browser-watch.mjs` drives Chrome over the DevTools Protocol and prints every
+WebSocket frame the page receives. It is the ground truth for what is on the
+wire, and it needs a game that is actually running.
 
 ---
 

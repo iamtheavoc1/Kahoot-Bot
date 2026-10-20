@@ -7,6 +7,8 @@
 //   --react       probe whether a reaction frame is accepted
 //   --react-burst <n>  fire n reactions as fast as possible and count them
 //   --ghosts      fetch the answer key from the ghost answers endpoint
+//   --recover     keep asking for recovery data, which is the game's own
+//                 view of itself rather than the player's
 //   --ua <ua>     override the user agent sent in the login packet.
 //                 --ua chrome uses a desktop Chrome string.
 //   --print-frames  list every frame the library throws away
@@ -121,6 +123,8 @@ const probes = {
   emote: null,
   burst: null,
   ghosts: null,
+  recoveryStates: new Set(),
+  recoveryPolling: false,
   correctChoices: null,
   extensiveModes: new Set(),
   sawTitle: false,
@@ -163,6 +167,9 @@ client.on("Joined", (settings) => {
   }
   if (reactBurst > 0) {
     probeReactionBurst(reactBurst);
+  }
+  if (flags.has("--recover")) {
+    startRecoveryPolling();
   }
 });
 
@@ -343,6 +350,50 @@ client.on("QuestionEnd", (question) => {
   );
 });
 
+client.on("RecoveryData", (recover) => {
+  // The recovery packet is the game's own state, and it is not filtered by
+  // the host's "show questions" setting, because it exists to put a
+  // disconnected player back in the game.
+  //
+  // The library maps its states onto the events: state 3 is the current
+  // question, state 4 and 5 carry the reveal, with the correct answers.
+  const state = recover?.state;
+  const data = recover?.data;
+  probes.recoveryStates.add(String(state));
+
+  const isObject = data && typeof data === "object";
+  const hasTitle = isObject && typeof (data.title ?? data.question) === "string";
+  const hasChoices = isObject && Array.isArray(data.choices);
+
+  console.log(`RECOVERY state=${state} keys=${isObject ? Object.keys(data).join(",") : "?"}`);
+  if (hasTitle || hasChoices) {
+    console.log("*** RECOVERY CARRIES THE QUESTION ***");
+    console.log(JSON.stringify(data, null, 2).slice(0, 2500));
+  }
+  if (isObject && data.revealAnswer) {
+    console.log("RECOVERY revealAnswer:", JSON.stringify(data.revealAnswer).slice(0, 800));
+  }
+});
+
+/**
+ * Keep asking for recovery data.
+ *
+ * It is the one request the protocol has for "tell me the state of the
+ * game", and the answer is the game's own view rather than the player's,
+ * so it may carry the question whatever the host's setting is.
+ */
+function startRecoveryPolling() {
+  const timer = setInterval(() => {
+    try {
+      client.requestRecoveryData();
+    } catch {
+      /* the socket may not be up */
+    }
+  }, 2000);
+  timer.unref?.();
+  probes.recoveryPolling = true;
+}
+
 client.on("Disconnect", (reason) => {
   console.log("disconnect:", reason);
   printSummary();
@@ -397,6 +448,9 @@ function printSummary() {
     }`,
   );
   console.log(`ghost answers      : ${probes.ghosts ?? "not tested (add --ghosts)"}`);
+  console.log(
+    `recovery states    : ${probes.recoveryStates.size > 0 ? [...probes.recoveryStates].sort().join(", ") : "not tested (add --recover)"}`,
+  );
   console.log(`ready answer       : ${probes.readyAnswer ?? "not tested (add --ready)"}`);
   console.log(`correctChoices     : ${JSON.stringify(probes.correctChoices)}`);
 

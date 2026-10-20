@@ -527,11 +527,61 @@ name you asked for tells you whether Kahoot rewrote it. It does: a name the
 filter dislikes comes back as a generated nickname like `SoaringSnail56`,
 not a censored spelling of what was asked for.
 
+**The name filter is defeated by splitting the word, not by padding it.**
+Measured against the server:
+
+```
+plain                  requested "nigger"       -> "MightyGoose58"    (renamed)
+mid-word zero-width    requested "ni<ZWSP>gger"  -> "ni<ZWSP>gger"    (kept)
+appended zero-width    requested "nigger<ZWSP>"  -> "HonestGlider14"  (renamed)
+```
+
+The filter matches on substrings, so a zero-width character inside the word
+means the offending run is no longer contiguous and the name passes
+untouched. A zero-width character appended at the end does not help at all:
+the word is still there in one piece. This is why `lib/names.js` puts the
+character in the middle of the first word.
+
 **The user agent is a random string.** The library does
 `this.userAgent = ua.getRandom()` and puts it in the login packet as
 `device.userAgent`. It can claim to be the W3C CSS validator. Kahoot decides
 what to send from that string, so it is worth overriding with a real browser
 user agent. `--ua chrome` does that.
+
+---
+
+## Getting the game state
+
+The protocol has one request for "tell me the state of the game", and it is
+not the one you would guess:
+
+```
+POST /service/controller   id 16   REQUEST_RECOVERY_DATA_FROM_PLAYER
+```
+
+The answer comes back on the player channel as id `17`, and the library maps
+its `state` onto events:
+
+```js
+case 1: this._emit("QuizStart", data); break;
+case 2: this._emit("QuestionReady", data.getReady); break;
+case 3: this._emit("QuestionStart", data); break;
+case 4:
+case 5:
+  this._emit("TimeUp", data);
+  if (data.revealAnswer) this._emit("QuestionEnd", data.revealAnswer);
+  break;
+```
+
+So the recovery payload at state 3 *is* the question, and at states 4 and 5
+it carries `revealAnswer`, which has the correct choices in it.
+
+This is the game's own view of itself rather than the player's view, and it
+exists to put a disconnected player back in the game. So it may well carry
+the question whatever the host's "show questions" setting is.
+
+`capture.js --recover` polls it every two seconds and prints any recovery
+that carries a title or choices.
 
 ---
 
